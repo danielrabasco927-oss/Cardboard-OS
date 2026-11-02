@@ -25,11 +25,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Keep screen awake while inside Google Cardboard headset
+        // Keep screen awake while mounted inside Google Cardboard headset
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Hide navigation bar and status bar for immersive VR
-        hideSystemUi()
+        // Post system bars hiding so WindowManager finishes initial SurfaceSyncGroup transaction
+        window.decorView.post {
+            hideSystemUi()
+        }
 
         headTracker = HeadTracker(this)
 
@@ -47,7 +49,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        hideSystemUi()
+        window.decorView.post {
+            hideSystemUi()
+        }
         headTracker.start()
     }
 
@@ -59,12 +63,14 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            hideSystemUi()
+            window.decorView.post {
+                hideSystemUi()
+            }
         }
     }
 
     /**
-     * Allows using physical Volume Down / Volume Up as Cardboard click trigger.
+     * Physical Volume keys act as Cardboard capacitive trigger / recenter
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {

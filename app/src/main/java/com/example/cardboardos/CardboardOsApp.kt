@@ -151,7 +151,7 @@ fun CardboardOsApp(
                             pitchDeg = headTracker.pitchDeg
                         )
 
-                        VrDestination.BROWSER -> BrowserScreen()
+                        VrDestination.BROWSER -> BrowserScreen(isLeftEye = isLeftEye)
 
                         VrDestination.APPS -> AppsScreen()
 

@@ -72,6 +72,7 @@ import com.example.ui.theme.TextSecondary
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun BrowserScreen(
+    isLeftEye: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var currentUrl by remember { mutableStateOf("https://es.wikipedia.org/wiki/Realidad_virtual") }
@@ -241,42 +242,77 @@ fun BrowserScreen(
                     .border(1.dp, NeonCyan.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
                     .clip(RoundedCornerShape(16.dp))
             ) {
-                AndroidView(
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.setSupportZoom(true)
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
+                if (isLeftEye) {
+                    AndroidView(
+                        factory = { context ->
+                            WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.setSupportZoom(true)
+                                settings.builtInZoomControls = true
+                                settings.displayZoomControls = false
 
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                    isLoading = true
-                                    url?.let { inputUrl = it }
+                                webViewClient = object : WebViewClient() {
+                                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                        isLoading = true
+                                        url?.let { inputUrl = it }
+                                    }
+                                    override fun onPageFinished(view: WebView?, url: String?) {
+                                        isLoading = false
+                                    }
+                                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                        return false
+                                    }
                                 }
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    isLoading = false
+
+                                webChromeClient = object : WebChromeClient() {
+                                    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                        progress = newProgress
+                                    }
                                 }
-                                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                                    return false
-                                }
+
+                                loadUrl(currentUrl)
+                                webViewInstance = this
                             }
-
-                            webChromeClient = object : WebChromeClient() {
-                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                    progress = newProgress
-                                }
-                            }
-
-                            loadUrl(currentUrl)
-                            webViewInstance = this
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    // Right eye synchronized virtual web screen projection
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(CyberSurfaceDark),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Language,
+                                contentDescription = null,
+                                tint = NeonCyan,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "PANTALLA ESTEREOSCÓPICA SINCRONIZADA",
+                                color = NeonCyan,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = currentUrl,
+                                color = TextSecondary,
+                                fontSize = 9.sp,
+                                maxLines = 1
+                            )
                         }
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
+                    }
+                }
             }
 
             // VIRTUAL GAZE / ON-SCREEN KEYBOARD FOR CARDBOARD

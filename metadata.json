@@ -1,0 +1,6 @@
+{
+  "name": "Cardboard OS",
+  "description": "Sistema operativo de realidad virtual para Google Cardboard y smartphones con escritorio 3D, cine virtual, navegador, streaming de juegos de PC y seguimiento de cabeza.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

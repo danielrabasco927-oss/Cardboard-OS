@@ -41,7 +41,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,6 +62,7 @@ import androidx.core.content.ContextCompat
 import com.example.cardboardos.model.PcStreamConfig
 import com.example.cardboardos.model.VrDestination
 import com.example.cardboardos.model.VrSettings
+import com.example.cardboardos.sensors.HandsFreeController
 import com.example.cardboardos.sensors.HeadTracker
 import com.example.cardboardos.ui.screens.AppsScreen
 import com.example.cardboardos.ui.screens.BrowserScreen
@@ -71,6 +76,7 @@ import com.example.cardboardos.ui.screens.VideoCinemaScreen
 import com.example.cardboardos.ui.vr.CameraPassthroughView
 import com.example.cardboardos.ui.vr.FloatingSpatialPanel
 import com.example.cardboardos.ui.vr.PermissionRequestView
+import com.example.cardboardos.ui.vr.VirtualHandCursor
 import com.example.cardboardos.ui.vr.VrBottomBar
 import com.example.ui.theme.CyberDarkBg
 import com.example.ui.theme.CyberSurfaceDark
@@ -79,6 +85,7 @@ import com.example.ui.theme.NeonPink
 import com.example.ui.theme.NeonViolet
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
+import kotlinx.coroutines.delay
 
 @Composable
 fun CardboardOsApp(
@@ -100,10 +107,6 @@ fun CardboardOsApp(
     var pcConfig by remember { mutableStateOf(PcStreamConfig()) }
     var showGuideDialog by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = currentDestination != null) {
-        currentDestination = null
-    }
-
     fun triggerHaptic() {
         if (vrSettings.hapticsEnabled) {
             try {
@@ -117,6 +120,104 @@ fun CardboardOsApp(
         }
     }
 
+    // HANDS-FREE CONTROLLER (AIR GESTURES, VISOR TAPS & DWELL CLICKS)
+    var focusedItemId by remember { mutableStateOf<String?>(null) }
+    var dwellProgress by remember { mutableFloatStateOf(0f) }
+    var isClickPulse by remember { mutableStateOf(false) }
+    var lastTriggerSource by remember { mutableStateOf("Listo") }
+
+    fun executeActionOnItem(itemId: String?) {
+        triggerHaptic()
+        isClickPulse = true
+        when (itemId) {
+            "passthrough" -> currentDestination = null
+            "home" -> currentDestination = VrDestination.HOME
+            "videos" -> currentDestination = VrDestination.VIDEOS
+            "browser" -> currentDestination = VrDestination.BROWSER
+            "apps" -> currentDestination = VrDestination.APPS
+            "pc_connect" -> currentDestination = VrDestination.PC_CONNECT
+            "games" -> currentDestination = VrDestination.GAMES
+            "settings" -> currentDestination = VrDestination.SETTINGS
+            "flip_cam" -> isFrontCamera = !isFrontCamera
+            "recenter" -> headTracker.recenter()
+            "toggle_vr" -> vrSettings = vrSettings.copy(isStereoscopic = !vrSettings.isStereoscopic)
+            "close_window" -> currentDestination = null
+            else -> {
+                // If in passthrough, open Home
+                if (currentDestination == null) {
+                    currentDestination = VrDestination.HOME
+                }
+            }
+        }
+    }
+
+    val handsFreeController = remember {
+        HandsFreeController(context) {
+            lastTriggerSource = "Gesto de Mano / Visor"
+            executeActionOnItem(focusedItemId)
+        }
+    }
+
+    DisposableEffect(Unit) {
+        handsFreeController.start()
+        onDispose {
+            handsFreeController.stop()
+        }
+    }
+
+    // AUTOMATIC TARGET FOCUS CALCULATION FROM HEAD ORIENTATION
+    LaunchedEffect(headTracker.pitchDeg, headTracker.yawDeg) {
+        val pitch = headTracker.pitchDeg
+        val yaw = headTracker.yawDeg
+
+        // Looking down at the bottom bar
+        if (pitch < -4f) {
+            focusedItemId = when {
+                yaw < -16f -> "passthrough"
+                yaw < -11f -> "home"
+                yaw < -6f -> "videos"
+                yaw < -1f -> "browser"
+                yaw < 4f -> "apps"
+                yaw < 9f -> "pc_connect"
+                yaw < 14f -> "games"
+                yaw < 19f -> "settings"
+                yaw < 24f -> "flip_cam"
+                else -> "recenter"
+            }
+        } else {
+            // Looking in front
+            if (currentDestination != null && pitch > 18f) {
+                focusedItemId = "close_window"
+            } else {
+                focusedItemId = null
+            }
+        }
+    }
+
+    // AUTOMATIC DWELL TIMER (LOOKING AT A BUTTON FOR 1 SECOND AUTO-CLICKS)
+    LaunchedEffect(focusedItemId) {
+        if (focusedItemId != null) {
+            val totalSteps = 20
+            val stepDelay = ((vrSettings.dwellTimeSeconds * 1000f) / totalSteps).toLong()
+            for (step in 1..totalSteps) {
+                delay(stepDelay)
+                dwellProgress = step / totalSteps.toFloat()
+            }
+            lastTriggerSource = "Mirada 1s"
+            executeActionOnItem(focusedItemId)
+            delay(300)
+            dwellProgress = 0f
+            isClickPulse = false
+        } else {
+            dwellProgress = 0f
+            isClickPulse = false
+        }
+    }
+
+    BackHandler(enabled = currentDestination != null) {
+        currentDestination = null
+    }
+
     val dragModifier = Modifier.pointerInput(Unit) {
         detectDragGestures { _, dragAmount ->
             headTracker.manualOffset(
@@ -128,21 +229,19 @@ fun CardboardOsApp(
 
     Box(modifier = modifier.fillMaxSize().then(dragModifier)) {
         if (!hasCameraPermission) {
-            // PROMPT CAMERA PERMISSIONS IMMEDIATELY
-            PermissionRequestView(
-                onPermissionGranted = {
-                    hasCameraPermission = true
-                }
-            )
+            PermissionRequestView(onPermissionGranted = { hasCameraPermission = true })
         } else {
-            // LAYER 1: LIVE HARDWARE CAMERA PASSTHROUGH
+            // LAYER 1: LIVE HARDWARE CAMERA PASSTHROUGH (WITH AIR HAND GESTURE FEED)
             CameraPassthroughView(
                 isFrontCamera = isFrontCamera,
                 hasCameraPermission = true,
+                onFrameForAirGesture = { proxy ->
+                    handsFreeController.analyzeCameraFrameForHandGesture(proxy)
+                },
                 modifier = Modifier.fillMaxSize()
             )
 
-            // CARDBOARD SEPTUM DIVIDER (WHEN STEREOSCOPIC SBS MODE IS ENABLED)
+            // CARDBOARD SEPTUM DIVIDER (WHEN STEREOSCOPIC SBS MODE IS ACTIVE)
             if (vrSettings.isStereoscopic) {
                 Box(
                     modifier = Modifier
@@ -156,7 +255,7 @@ fun CardboardOsApp(
                         )
                 )
 
-                // Lens vignette overlay
+                // Left & Right eye lens vignette
                 if (vrSettings.distortionVignette) {
                     Row(modifier = Modifier.fillMaxSize()) {
                         Box(
@@ -202,6 +301,7 @@ fun CardboardOsApp(
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // FLOATING WINDOW TITLE BAR (MINIMIZE & CLOSE TO SEE CAMERA)
+                        val isCloseFocused = focusedItemId == "close_window"
                         Surface(
                             color = CyberSurfaceDark.copy(alpha = 0.95f),
                             shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
@@ -244,13 +344,19 @@ fun CardboardOsApp(
                                             triggerHaptic()
                                             currentDestination = null
                                         },
-                                        colors = ButtonDefaults.buttonColors(containerColor = NeonPink),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isCloseFocused) NeonCyan else NeonPink
+                                        ),
                                         shape = RoundedCornerShape(8.dp),
                                         modifier = Modifier.height(26.dp)
                                     ) {
                                         Icon(imageVector = Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(12.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text(text = "Ver Cámara", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        Text(
+                                            text = if (isCloseFocused) "¡Mira arriba o pasa mano!" else "Ver Cámara",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     }
 
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -327,20 +433,21 @@ fun CardboardOsApp(
                                     }
                                 )
 
-                                null -> { /* Camera Passthrough pure view */ }
+                                null -> {}
                             }
                         }
                     }
                 }
             }
 
-            // LAYER 3: FLOATING BOTTOM BAR
+            // LAYER 3: FLOATING BOTTOM BAR (HIGHLIGHTS WITH HEAD ORIENTATION)
             VrBottomBar(
                 currentDestination = currentDestination,
                 onSelectDestination = { dest ->
                     triggerHaptic()
                     currentDestination = dest
                 },
+                focusedItemId = focusedItemId,
                 isFrontCamera = isFrontCamera,
                 onToggleCamera = {
                     triggerHaptic()
@@ -356,6 +463,14 @@ fun CardboardOsApp(
                     headTracker.recenter()
                 },
                 modifier = Modifier.align(Alignment.BottomCenter)
+            )
+
+            // LAYER 4: VIRTUAL 3D HAND CURSOR & AIR GESTURE POINTER
+            VirtualHandCursor(
+                isHovering = focusedItemId != null,
+                dwellProgress = dwellProgress,
+                isClickPulse = isClickPulse,
+                lastTriggerSource = lastTriggerSource
             )
         }
 

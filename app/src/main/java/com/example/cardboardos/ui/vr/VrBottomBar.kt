@@ -46,6 +46,7 @@ import com.example.ui.theme.TextSecondary
 fun VrBottomBar(
     currentDestination: VrDestination?,
     onSelectDestination: (VrDestination?) -> Unit,
+    focusedItemId: String?,
     isFrontCamera: Boolean,
     onToggleCamera: () -> Unit,
     isStereoscopic: Boolean,
@@ -54,9 +55,9 @@ fun VrBottomBar(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        color = CyberSurfaceDark.copy(alpha = 0.92f),
+        color = CyberSurfaceDark.copy(alpha = 0.94f),
         shape = RoundedCornerShape(26.dp),
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, NeonCyan.copy(alpha = 0.6f)),
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, NeonCyan.copy(alpha = 0.7f)),
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -69,13 +70,18 @@ fun VrBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            val isPassthroughFocused = focusedItemId == "passthrough"
             // CAMERA PASSTHROUGH QUICK ACTION
             Surface(
-                color = if (currentDestination == null) NeonPink.copy(alpha = 0.35f) else CyberSurfaceGlass,
+                color = when {
+                    isPassthroughFocused -> NeonPink.copy(alpha = 0.6f)
+                    currentDestination == null -> NeonPink.copy(alpha = 0.35f)
+                    else -> CyberSurfaceGlass
+                },
                 shape = RoundedCornerShape(14.dp),
                 border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    if (currentDestination == null) NeonPink else NeonCyan.copy(alpha = 0.3f)
+                    if (isPassthroughFocused) 2.dp else 1.dp,
+                    if (isPassthroughFocused || currentDestination == null) NeonPink else NeonCyan.copy(alpha = 0.3f)
                 ),
                 modifier = Modifier
                     .clickable { onSelectDestination(null) }
@@ -88,7 +94,7 @@ fun VrBottomBar(
                     Icon(
                         imageVector = Icons.Default.Visibility,
                         contentDescription = "Ver Cámara",
-                        tint = if (currentDestination == null) NeonPink else NeonCyan,
+                        tint = if (isPassthroughFocused || currentDestination == null) Color.White else NeonCyan,
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -121,17 +127,23 @@ fun VrBottomBar(
             ) {
                 items(navItems) { dest ->
                     val isSelected = currentDestination == dest
+                    val isFocused = focusedItemId == dest.name.lowercase()
+
                     Surface(
-                        color = if (isSelected) NeonViolet.copy(alpha = 0.5f) else Color.Transparent,
+                        color = when {
+                            isFocused -> NeonPink.copy(alpha = 0.5f)
+                            isSelected -> NeonViolet.copy(alpha = 0.5f)
+                            else -> Color.Transparent
+                        },
                         shape = RoundedCornerShape(12.dp),
                         border = androidx.compose.foundation.BorderStroke(
-                            if (isSelected) 1.dp else 0.5.dp,
-                            if (isSelected) NeonPink else NeonCyan.copy(alpha = 0.25f)
+                            if (isFocused) 2.dp else if (isSelected) 1.2.dp else 0.5.dp,
+                            if (isFocused) NeonPink else if (isSelected) NeonCyan else NeonCyan.copy(alpha = 0.25f)
                         ),
                         modifier = Modifier
                             .clickable {
                                 if (isSelected) {
-                                    onSelectDestination(null) // Toggle minimize to passthrough
+                                    onSelectDestination(null)
                                 } else {
                                     onSelectDestination(dest)
                                 }
@@ -145,15 +157,15 @@ fun VrBottomBar(
                             Icon(
                                 imageVector = dest.icon,
                                 contentDescription = dest.title,
-                                tint = if (isSelected) NeonPink else NeonCyan,
+                                tint = if (isFocused) Color.White else if (isSelected) NeonPink else NeonCyan,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = dest.title,
-                                color = if (isSelected) TextPrimary else TextSecondary,
+                                color = if (isFocused || isSelected) TextPrimary else TextSecondary,
                                 fontSize = 10.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (isFocused || isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                         }
                     }
@@ -165,42 +177,63 @@ fun VrBottomBar(
             // SYSTEM ACTION TOOLS: FLIP CAMERA, VR/FLAT TOGGLE, RECENTER
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Switch Camera (Front / Back)
-                IconButton(
-                    onClick = onToggleCamera,
-                    modifier = Modifier.size(32.dp).testTag("action_flip_cam")
+                val isCamFocused = focusedItemId == "flip_cam"
+                Surface(
+                    color = if (isCamFocused) NeonPink.copy(alpha = 0.4f) else Color.Transparent,
+                    shape = CircleShape,
+                    border = if (isCamFocused) androidx.compose.foundation.BorderStroke(1.5.dp, NeonPink) else null
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FlipCameraAndroid,
-                        contentDescription = "Cambiar Cámara Delantera/Trasera",
-                        tint = NeonCyan,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    IconButton(
+                        onClick = onToggleCamera,
+                        modifier = Modifier.size(32.dp).testTag("action_flip_cam")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FlipCameraAndroid,
+                            contentDescription = "Cambiar Cámara Delantera/Trasera",
+                            tint = if (isCamFocused) Color.White else NeonCyan,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
 
                 // Recenter orientation
-                IconButton(
-                    onClick = onRecenter,
-                    modifier = Modifier.size(32.dp).testTag("action_recenter_bar")
+                val isRecenterFocused = focusedItemId == "recenter"
+                Surface(
+                    color = if (isRecenterFocused) NeonPink.copy(alpha = 0.4f) else Color.Transparent,
+                    shape = CircleShape,
+                    border = if (isRecenterFocused) androidx.compose.foundation.BorderStroke(1.5.dp, NeonPink) else null
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CenterFocusStrong,
-                        contentDescription = "Centrar Vista",
-                        tint = NeonPink,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    IconButton(
+                        onClick = onRecenter,
+                        modifier = Modifier.size(32.dp).testTag("action_recenter_bar")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CenterFocusStrong,
+                            contentDescription = "Centrar Vista",
+                            tint = if (isRecenterFocused) Color.White else NeonPink,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
 
                 // VR Dual Screen vs Flat Screen Toggle
-                IconButton(
-                    onClick = onToggleVrMode,
-                    modifier = Modifier.size(32.dp).testTag("action_toggle_vr_bar")
+                val isVrFocused = focusedItemId == "toggle_vr"
+                Surface(
+                    color = if (isVrFocused) NeonPink.copy(alpha = 0.4f) else Color.Transparent,
+                    shape = CircleShape,
+                    border = if (isVrFocused) androidx.compose.foundation.BorderStroke(1.5.dp, NeonPink) else null
                 ) {
-                    Icon(
-                        imageVector = if (isStereoscopic) Icons.Default.ViewInAr else Icons.Default.Visibility,
-                        contentDescription = "Modo Cardboard / Plano",
-                        tint = NeonViolet,
-                        modifier = Modifier.size(17.dp)
-                    )
+                    IconButton(
+                        onClick = onToggleVrMode,
+                        modifier = Modifier.size(32.dp).testTag("action_toggle_vr_bar")
+                    ) {
+                        Icon(
+                            imageVector = if (isStereoscopic) Icons.Default.ViewInAr else Icons.Default.Visibility,
+                            contentDescription = "Modo Cardboard / Plano",
+                            tint = if (isVrFocused) Color.White else NeonViolet,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
                 }
             }
         }
